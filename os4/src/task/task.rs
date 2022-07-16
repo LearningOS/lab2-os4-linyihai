@@ -1,7 +1,7 @@
 //! Types related to task management
 use super::TaskContext;
 use crate::config::{kernel_stack_position, TRAP_CONTEXT, MAX_SYSCALL_NUM};
-use crate::mm::{MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
+use crate::mm::{MapPermission, MemorySet, PhysPageNum, VirtAddr, VirtPageNum, KERNEL_SPACE};
 use crate::trap::{trap_handler, TrapContext};
 pub use crate::timer::get_time;
 
@@ -23,6 +23,9 @@ impl TaskControlBlock {
     }
     pub fn get_user_token(&self) -> usize {
         self.memory_set.token()
+    }
+    pub fn had_alloc(&self, vpn: VirtPageNum) -> bool {
+        self.memory_set.had_alloc(vpn) 
     }
     pub fn new(elf_data: &[u8], app_id: usize) -> Self {
         // memory_set with elf program headers/trampoline/trap context/user stack

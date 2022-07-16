@@ -17,13 +17,14 @@ mod task;
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
-use crate::config::{MAX_SYSCALL_NUM, CLOCK_FREQ};
+use crate::config::{MAX_SYSCALL_NUM, CLOCK_FREQ, PAGE_SIZE};
 use alloc::vec::Vec;
 use lazy_static::*;
 pub use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
 pub use crate::timer::get_time;
 pub use context::TaskContext;
+use crate::mm::{MapPermission, VirtAddr, VirtPageNum};
 
 /// The task manager, where all the tasks are managed.
 ///
@@ -163,6 +164,48 @@ impl TaskManager {
         let current = inner.current_task;
         inner.tasks[current].syscall_times[syscall_id] += 1;
     }
+
+    fn mmap (&self, start: usize, len: usize, port: usize) -> isize {
+        if start % PAGE_SIZE != 0 {
+            return -1
+        }
+        if port & !0x7 != 0 || port & 0x7 == 0 || port == 0 {
+            return -1
+        }
+
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let start_va = VirtAddr::from(start).floor();
+        let end_va = VirtAddr::from(start + len).ceil();
+        for i in start_va.0..end_va.0 {
+            if inner.tasks[current].memory_set.had_alloc(VirtPageNum(i)) {
+                return -1
+            }
+        }
+
+        let permission = MapPermission::from_bits(((port << 1) | 16) as u8);
+        inner.tasks[current].memory_set.insert_framed_area(VirtAddr(start), VirtAddr(start + len), permission.unwrap());
+        
+        0
+    }
+
+    fn unmap (&self, start: usize, len: usize) -> isize {
+        if start % PAGE_SIZE != 0 {
+            return -1
+        }
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+
+        let start_va = VirtAddr::from(start).floor();
+        let end_va = VirtAddr::from(start + len).ceil();
+        for i in start_va.0..end_va.0 {
+            if !inner.tasks[current].memory_set.unmap(VirtPageNum(i)) {
+                return -1
+            }
+        }
+
+        0
+    }
 }
 
 /// Run the first task in task list.
@@ -214,4 +257,12 @@ pub fn update_syscall_times(syscall_id: usize) {
 
 pub fn get_task_info() -> ([u32;MAX_SYSCALL_NUM], usize) {
     TASK_MANAGER.get_task_info()
+}
+
+pub fn mmap(start: usize, len:usize, port: usize) -> isize {
+    TASK_MANAGER.mmap(start, len, port)
+}
+
+pub fn unmap(start: usize, len:usize) -> isize {
+    TASK_MANAGER.unmap(start, len)
 }

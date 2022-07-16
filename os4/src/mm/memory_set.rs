@@ -38,6 +38,26 @@ pub struct MemorySet {
 }
 
 impl MemorySet {
+    pub fn had_alloc(&self, vpn: VirtPageNum) -> bool {
+        for i in 0..self.areas.len() {
+            if self.areas[i].had_alloc(vpn) {
+                return true
+            }
+        }
+        false
+    }
+
+    pub fn unmap(&mut self, vpn: VirtPageNum) -> bool {
+        for i in 0..self.areas.len() {
+            if self.areas[i].had_alloc(vpn) {
+                self.areas[i].unmap(&mut self.page_table);
+                self.areas.remove(i);
+                return true
+            }
+        }
+        false
+    }
+
     pub fn new_bare() -> Self {
         Self {
             page_table: PageTable::new(),
@@ -301,6 +321,9 @@ impl MapArea {
             }
             current_vpn.step();
         }
+    }
+    pub fn had_alloc(&self, vpn: VirtPageNum) -> bool {
+        return self.vpn_range.get_start().0 <= vpn.0 && self.vpn_range.get_end().0 > vpn.0
     }
 }
 
